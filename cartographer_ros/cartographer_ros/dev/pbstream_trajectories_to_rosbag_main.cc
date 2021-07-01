@@ -31,6 +31,7 @@
 DEFINE_string(input, "", "pbstream file to process");
 DEFINE_string(output, "", "Bag file to write to.");
 DEFINE_string(parent_frame, "map", "Frame id to use as parent frame.");
+DEFINE_string(tracking_frame, "", "Frame id to use as tracking frame.");
 
 namespace cartographer_ros {
 namespace {
@@ -53,7 +54,7 @@ geometry_msgs::TransformStamped ToTransformStamped(
 
 void pbstream_trajectories_to_bag(const std::string& pbstream_filename,
                                   const std::string& output_bag_filename,
-                                  const std::string& parent_frame_id) {
+                                  const std::string& parent_frame_id, const std::string& tracking_frame_id) {
   const auto pose_graph =
       cartographer::io::DeserializePoseGraphFromFile(FLAGS_input);
 
@@ -68,7 +69,7 @@ void pbstream_trajectories_to_bag(const std::string& pbstream_filename,
     for (const auto& node : trajectory.node()) {
       tf2_msgs::TFMessage tf_msg;
       geometry_msgs::TransformStamped transform_stamped = ToTransformStamped(
-          node.timestamp(), parent_frame_id, child_frame_id, node.pose());
+          node.timestamp(), parent_frame_id, tracking_frame_id, node.pose());
       tf_msg.transforms.push_back(transform_stamped);
       bag.write(child_frame_id, transform_stamped.header.stamp,
                 transform_stamped);
@@ -95,8 +96,9 @@ int main(int argc, char* argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   CHECK(!FLAGS_input.empty()) << "-input pbstream is missing.";
   CHECK(!FLAGS_output.empty()) << "-output is missing.";
+  CHECK(!FLAGS_tracking_frame.empty()) << "-tracking_frame is missing.";
 
   cartographer_ros::pbstream_trajectories_to_bag(FLAGS_input, FLAGS_output,
-                                                 FLAGS_parent_frame);
+                                                 FLAGS_parent_frame, FLAGS_tracking_frame);
   return 0;
 }
