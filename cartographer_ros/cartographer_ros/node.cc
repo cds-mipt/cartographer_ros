@@ -64,13 +64,17 @@ template <typename MessageType>
     void (Node::*handler)(int, const std::string&,
                           const typename MessageType::ConstPtr&),
     const int trajectory_id, const std::string& topic,
-    ::ros::NodeHandle* const node_handle, Node* const node) {
+    ::ros::NodeHandle* const node_handle, Node* const node,
+    carto::common::TimeMeasurer* ros_time_measurer_pointer = nullptr) {
+  CHECK(ros_time_measurer_pointer);
   return node_handle->subscribe<MessageType>(
       topic, kInfiniteSubscriberQueueSize,
       boost::function<void(const typename MessageType::ConstPtr&)>(
           [node, handler, trajectory_id,
-           topic](const typename MessageType::ConstPtr& msg) {
+           topic, ros_time_measurer_pointer](const typename MessageType::ConstPtr& msg) {
+            ros_time_measurer_pointer->StartMeasurement();
             (node->*handler)(trajectory_id, topic, msg);
+            ros_time_measurer_pointer->StopMeasurement();
           }));
 }
 
@@ -413,6 +417,7 @@ int Node::AddTrajectory(const TrajectoryOptions& options) {
 
 void Node::LaunchSubscribers(const TrajectoryOptions& options,
                              const int trajectory_id) {
+  static carto::common::TimeMeasurer ros_time_measurer("ros", true);
   for (const std::string& topic :
        ComputeRepeatedTopicNames(kLaserScanTopic, options.num_laser_scans)) {
     subscribers_[trajectory_id].push_back(
@@ -434,7 +439,7 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::PointCloud2>(
              &Node::HandlePointCloud2Message, trajectory_id, topic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          topic});
   }
 
@@ -447,7 +452,7 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::Imu>(&Node::HandleImuMessage,
                                                 trajectory_id, kImuTopic,
-                                                &node_handle_, this),
+                                                &node_handle_, this, &ros_time_measurer),
          kImuTopic});
   }
 
