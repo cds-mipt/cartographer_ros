@@ -56,7 +56,7 @@ void pbstream_trajectories_to_bag(const std::string& pbstream_filename,
                                   const std::string& output_bag_filename,
                                   const std::string& parent_frame_id, const std::string& tracking_frame_id) {
   const auto pose_graph =
-      cartographer::io::DeserializePoseGraphFromFile(FLAGS_input);
+      cartographer::io::DeserializePoseGraphFromFile(pbstream_filename);
 
   rosbag::Bag bag(output_bag_filename, rosbag::bagmode::Write);
   for (const auto trajectory : pose_graph.trajectory()) {
