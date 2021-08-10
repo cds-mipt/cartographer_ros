@@ -52,7 +52,7 @@ void pbstream_map_to_pcd(const std::string& pbstream_filename,
   cartographer::io::ProtoStreamDeserializer map_deserializer(&map_reader);
 
   // get global (optimized) node poses
-  auto global_node_poses = get_global_node_poses(map_deserializer.pose_graph());
+  const NodePoses& global_node_poses = get_global_node_poses(map_deserializer.pose_graph());
 
   // prepare pcd_writer object to write points to file
   auto file_writer = std::make_unique<cartographer::io::StreamFileWriter>(output_pcd_filename);
