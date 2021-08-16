@@ -65,7 +65,7 @@ template <typename MessageType>
                           const typename MessageType::ConstPtr&),
     const int trajectory_id, const std::string& topic,
     ::ros::NodeHandle* const node_handle, Node* const node,
-    carto::common::TimeMeasurer* ros_time_measurer_pointer = nullptr) {
+    time_measurer::TimeMeasurer* ros_time_measurer_pointer = nullptr) {
   CHECK(ros_time_measurer_pointer);
   return node_handle->subscribe<MessageType>(
       topic, kInfiniteSubscriberQueueSize,
@@ -417,7 +417,7 @@ int Node::AddTrajectory(const TrajectoryOptions& options) {
 
 void Node::LaunchSubscribers(const TrajectoryOptions& options,
                              const int trajectory_id) {
-  static carto::common::TimeMeasurer ros_time_measurer("ros", true);
+  static time_measurer::TimeMeasurer ros_time_measurer("ros", true);
   for (const std::string& topic :
        ComputeRepeatedTopicNames(kLaserScanTopic, options.num_laser_scans)) {
     subscribers_[trajectory_id].push_back(
