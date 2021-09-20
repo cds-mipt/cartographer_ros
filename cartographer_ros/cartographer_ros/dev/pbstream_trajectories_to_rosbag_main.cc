@@ -60,7 +60,7 @@ void pbstream_trajectories_to_bag(const std::string& pbstream_filename,
 
   rosbag::Bag bag(output_bag_filename, rosbag::bagmode::Write);
   for (const auto trajectory : pose_graph.trajectory()) {
-    const auto child_frame_id =
+    const auto topic =
         absl::StrCat("trajectory_", trajectory.trajectory_id());
     LOG(INFO)
         << "Writing tf and geometry_msgs/TransformStamped for trajectory id "
@@ -71,7 +71,7 @@ void pbstream_trajectories_to_bag(const std::string& pbstream_filename,
       geometry_msgs::TransformStamped transform_stamped = ToTransformStamped(
           node.timestamp(), parent_frame_id, tracking_frame_id, node.pose());
       tf_msg.transforms.push_back(transform_stamped);
-      bag.write(child_frame_id, transform_stamped.header.stamp,
+      bag.write(topic, transform_stamped.header.stamp,
                 transform_stamped);
       bag.write("/tf", transform_stamped.header.stamp, tf_msg);
     }
