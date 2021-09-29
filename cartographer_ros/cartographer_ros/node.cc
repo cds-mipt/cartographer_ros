@@ -376,12 +376,12 @@ Node::ComputeExpectedSensorIds(const TrajectoryOptions& options) const {
   }
   // For 2D SLAM, subscribe to the IMU if we expect it. For 3D SLAM, the IMU is
   // required.
-  if (node_options_.map_builder_options.use_trajectory_builder_3d() ||
-      (node_options_.map_builder_options.use_trajectory_builder_2d() &&
-       options.trajectory_builder_options.trajectory_builder_2d_options()
-           .use_imu_data())) {
-    expected_topics.insert(SensorId{SensorType::IMU, kImuTopic});
-  }
+  // if (node_options_.map_builder_options.use_trajectory_builder_3d() ||
+  //     (node_options_.map_builder_options.use_trajectory_builder_2d() &&
+  //      options.trajectory_builder_options.trajectory_builder_2d_options()
+  //          .use_imu_data())) {
+  //   expected_topics.insert(SensorId{SensorType::IMU, kImuTopic});
+  // }
   // Odometry is optional.
   if (options.use_odometry) {
     expected_topics.insert(SensorId{SensorType::ODOMETRY, kOdometryTopic});
@@ -445,16 +445,16 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
 
   // For 2D SLAM, subscribe to the IMU if we expect it. For 3D SLAM, the IMU is
   // required.
-  if (node_options_.map_builder_options.use_trajectory_builder_3d() ||
-      (node_options_.map_builder_options.use_trajectory_builder_2d() &&
-       options.trajectory_builder_options.trajectory_builder_2d_options()
-           .use_imu_data())) {
-    subscribers_[trajectory_id].push_back(
-        {SubscribeWithHandler<sensor_msgs::Imu>(&Node::HandleImuMessage,
-                                                trajectory_id, kImuTopic,
-                                                &node_handle_, this, &ros_time_measurer),
-         kImuTopic});
-  }
+  // if (node_options_.map_builder_options.use_trajectory_builder_3d() ||
+  //     (node_options_.map_builder_options.use_trajectory_builder_2d() &&
+  //      options.trajectory_builder_options.trajectory_builder_2d_options()
+  //          .use_imu_data())) {
+  //   subscribers_[trajectory_id].push_back(
+  //       {SubscribeWithHandler<sensor_msgs::Imu>(&Node::HandleImuMessage,
+  //                                               trajectory_id, kImuTopic,
+  //                                               &node_handle_, this, &ros_time_measurer),
+  //        kImuTopic});
+  // }
 
   if (options.use_odometry) {
     subscribers_[trajectory_id].push_back(
