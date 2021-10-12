@@ -65,7 +65,7 @@ template <typename MessageType>
                           const typename MessageType::ConstPtr&),
     const int trajectory_id, const std::string& topic,
     ::ros::NodeHandle* const node_handle, Node* const node,
-    time_measurer::TimeMeasurer* ros_time_measurer_pointer = nullptr) {
+    time_measurer::TimeMeasurer* ros_time_measurer_pointer) {
   CHECK(ros_time_measurer_pointer);
   return node_handle->subscribe<MessageType>(
       topic, kInfiniteSubscriberQueueSize,
@@ -423,7 +423,7 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::LaserScan>(
              &Node::HandleLaserScanMessage, trajectory_id, topic, &node_handle_,
-             this),
+             this, &ros_time_measurer),
          topic});
   }
   for (const std::string& topic : ComputeRepeatedTopicNames(
@@ -431,7 +431,7 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::MultiEchoLaserScan>(
              &Node::HandleMultiEchoLaserScanMessage, trajectory_id, topic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          topic});
   }
   for (const std::string& topic :
@@ -460,21 +460,21 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<nav_msgs::Odometry>(&Node::HandleOdometryMessage,
                                                   trajectory_id, kOdometryTopic,
-                                                  &node_handle_, this),
+                                                  &node_handle_, this, &ros_time_measurer),
          kOdometryTopic});
   }
   if (options.use_nav_sat) {
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::NavSatFix>(
              &Node::HandleNavSatFixMessage, trajectory_id, kNavSatFixTopic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          kNavSatFixTopic});
   }
   if (options.use_landmarks) {
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<cartographer_ros_msgs::LandmarkList>(
              &Node::HandleLandmarkMessage, trajectory_id, kLandmarkTopic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          kLandmarkTopic});
   }
 }
