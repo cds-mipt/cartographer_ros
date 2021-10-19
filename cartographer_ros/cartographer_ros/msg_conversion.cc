@@ -42,6 +42,8 @@
 #include "sensor_msgs/MultiEchoLaserScan.h"
 #include "sensor_msgs/PointCloud2.h"
 
+#include "time_measurer.h"
+
 namespace {
 
 // Sizes of PCL point types have to be 4n floats for alignment, as described in
@@ -215,6 +217,7 @@ ToPointCloudWithIntensities(const sensor_msgs::MultiEchoLaserScan& msg) {
 std::tuple<::cartographer::sensor::PointCloudWithIntensities,
            ::cartographer::common::Time>
 ToPointCloudWithIntensities(const sensor_msgs::PointCloud2& msg) {
+  MEASURE_BLOCK_TIME(point_cloud_conversion);
   PointCloudWithIntensities point_cloud;
   // We check for intensity field here to avoid run-time warnings if we pass in
   // a PointCloud2 without intensity.
