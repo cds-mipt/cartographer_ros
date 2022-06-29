@@ -42,7 +42,7 @@
 #include "sensor_msgs/MultiEchoLaserScan.h"
 #include "sensor_msgs/PointCloud2.h"
 
-#include "time_measurer.h"
+#include "time_measurer/time_measurer.h"
 
 namespace {
 

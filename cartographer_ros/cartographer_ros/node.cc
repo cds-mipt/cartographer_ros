@@ -48,7 +48,7 @@
 #include "tf2_eigen/tf2_eigen.h"
 #include "visualization_msgs/MarkerArray.h"
 
-#include "time_measurer.h"
+#include "time_measurer/time_measurer.h"
 
 namespace cartographer_ros {
 
