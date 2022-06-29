@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-string configuration_directory
-string configuration_basename
+string configuration_filename
 bool use_initial_pose
 geometry_msgs/Pose initial_pose
 int32 relative_to_trajectory_id

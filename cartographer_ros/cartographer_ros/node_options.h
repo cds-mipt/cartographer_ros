@@ -44,8 +44,7 @@ NodeOptions CreateNodeOptions(
     ::cartographer::common::LuaParameterDictionary* lua_parameter_dictionary);
 
 std::tuple<NodeOptions, TrajectoryOptions> LoadOptions(
-    const std::string& configuration_directory,
-    const std::string& configuration_basename);
+    const std::string& configuration_filename);
 }  // namespace cartographer_ros
 
 #endif  // CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_NODE_OPTIONS_H

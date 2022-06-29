@@ -568,8 +568,7 @@ bool Node::HandleStartTrajectory(
     ::cartographer_ros_msgs::StartTrajectory::Request& request,
     ::cartographer_ros_msgs::StartTrajectory::Response& response) {
   TrajectoryOptions trajectory_options;
-  std::tie(std::ignore, trajectory_options) = LoadOptions(
-      request.configuration_directory, request.configuration_basename);
+  std::tie(std::ignore, trajectory_options) = LoadOptions(request.configuration_filename);
 
   if (request.use_initial_pose) {
     const auto pose = ToRigid3d(request.initial_pose);

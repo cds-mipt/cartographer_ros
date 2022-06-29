@@ -38,14 +38,9 @@
 DEFINE_bool(collect_metrics, false,
             "Activates the collection of runtime metrics. If activated, the "
             "metrics can be accessed via a ROS service.");
-DEFINE_string(configuration_directory, "",
-              "First directory in which configuration files are searched, "
-              "second is always the Cartographer installation to allow "
-              "including files from there.");
 DEFINE_string(
-    configuration_basenames, "",
-    "Comma-separated list of basenames, i.e. not containing any "
-    "directory prefix, of the configuration files for each trajectory. "
+    configuration_filenames, "",
+    "Comma-separated list of filenames with parameters for each trajectory. "
     "The first configuration file will be used for node options. "
     "If less configuration files are specified than trajectories, the "
     "first file will be used the remaining trajectories.");
@@ -88,26 +83,24 @@ constexpr int kSingleThreaded = 1;
 const ::ros::Duration kDelay = ::ros::Duration(1.0);
 
 void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
-  CHECK(!FLAGS_configuration_directory.empty())
-      << "-configuration_directory is missing.";
-  CHECK(!FLAGS_configuration_basenames.empty())
-      << "-configuration_basenames is missing.";
+  CHECK(!FLAGS_configuration_filenames.empty())
+      << "-configuration_filenames is missing.";
   CHECK(!(FLAGS_bag_filenames.empty() && FLAGS_load_state_filename.empty()))
       << "-bag_filenames and -load_state_filename cannot both be unspecified.";
   const std::vector<std::string> bag_filenames =
       absl::StrSplit(FLAGS_bag_filenames, ',', absl::SkipEmpty());
   cartographer_ros::NodeOptions node_options;
-  const std::vector<std::string> configuration_basenames =
-      absl::StrSplit(FLAGS_configuration_basenames, ',', absl::SkipEmpty());
+  const std::vector<std::string> configuration_filenames =
+      absl::StrSplit(FLAGS_configuration_filenames, ',', absl::SkipEmpty());
   std::vector<TrajectoryOptions> bag_trajectory_options(1);
   std::tie(node_options, bag_trajectory_options.at(0)) =
-      LoadOptions(FLAGS_configuration_directory, configuration_basenames.at(0));
+      LoadOptions(configuration_filenames.at(0));
 
   for (size_t bag_index = 1; bag_index < bag_filenames.size(); ++bag_index) {
     TrajectoryOptions current_trajectory_options;
-    if (bag_index < configuration_basenames.size()) {
+    if (bag_index < configuration_filenames.size()) {
       std::tie(std::ignore, current_trajectory_options) = LoadOptions(
-          FLAGS_configuration_directory, configuration_basenames.at(bag_index));
+          configuration_filenames.at(bag_index));
     } else {
       current_trajectory_options = bag_trajectory_options.at(0);
     }
@@ -175,7 +168,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   std::vector<
       std::set<cartographer::mapping::TrajectoryBuilderInterface::SensorId>>
       bag_expected_sensor_ids;
-  if (configuration_basenames.size() == 1) {
+  if (configuration_filenames.size() == 1) {
     const auto current_bag_expected_sensor_ids =
         node.ComputeDefaultSensorIdsForMultipleBags(
             {bag_trajectory_options.front()});
