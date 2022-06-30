@@ -33,6 +33,7 @@
 #include "ros/callback_queue.h"
 #include "rosgraph_msgs/Clock.h"
 #include "tf2_ros/static_transform_broadcaster.h"
+#include "tf2_ros/transform_listener.h"
 #include "urdf/model.h"
 
 DEFINE_bool(collect_metrics, false,
@@ -53,6 +54,8 @@ DEFINE_string(urdf_filenames, "",
               "static links for the sensor configuration(s).");
 DEFINE_bool(use_bag_transforms, true,
             "Whether to read, use and republish transforms from bags.");
+DEFINE_bool(read_transforms_from_topics, true,
+            "Read transforms from /tf and /tf_static.");
 DEFINE_string(load_state_filename, "",
               "If non-empty, filename of a .pbstream file to load, containing "
               "a saved SLAM state.");
@@ -133,7 +136,13 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
                            current_urdf_transforms.end());
   }
 
-  tf_buffer.setUsingDedicatedThread(true);
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_ptr;
+  if (FLAGS_read_transforms_from_topics) {
+    tf_listener_ptr.reset(new tf2_ros::TransformListener(tf_buffer));
+    ros::WallDuration(0.5).sleep();
+  } else {
+    tf_buffer.setUsingDedicatedThread(true);
+  }
 
   Node node(node_options, std::move(map_builder), &tf_buffer,
             FLAGS_collect_metrics);
