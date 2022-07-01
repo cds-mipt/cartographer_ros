@@ -71,11 +71,15 @@ DEFINE_bool(keep_running, false,
             "have been processed.");
 DEFINE_double(skip_seconds, 0,
               "Optional amount of seconds to skip from the beginning "
-              "(i.e. when the earliest bag starts.). ");
+              "(i.e. when the earliest bag starts.).");
+DEFINE_double(sleep_ms_after_first_clock, 0,
+              "Sleep ms after first clock.");
+DEFINE_double(sleep_ms, 0,
+              "Sleep ms after each point cloud processed.");
 
 namespace cartographer_ros {
 
-constexpr char kClockTopic[] = "clock";
+constexpr char kClockTopic[] = "/clock";
 constexpr char kTfStaticTopic[] = "/tf_static";
 constexpr char kTfTopic[] = "tf";
 constexpr double kClockPublishFrequencySec = 1. / 30.;
@@ -276,6 +280,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
       playable_bag_multiplexer.IsMessageAvailable()
           ? playable_bag_multiplexer.PeekMessageTime()
           : ros::Time();
+  bool first_message = true;
   while (playable_bag_multiplexer.IsMessageAvailable()) {
     if (!::ros::ok()) {
       return;
@@ -288,6 +293,13 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
 
     if (msg.getTime() < (begin_time + ros::Duration(FLAGS_skip_seconds))) {
       continue;
+    }
+
+    clock.clock = msg.getTime();
+    clock_publisher.publish(clock);
+    if (first_message) {
+      ros::WallDuration(FLAGS_sleep_ms_after_first_clock / 1000).sleep();
+      first_message = false;
     }
 
     int trajectory_id;
@@ -317,16 +329,19 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
       if (msg.isType<sensor_msgs::LaserScan>()) {
         node.HandleLaserScanMessage(trajectory_id, sensor_id,
                                     msg.instantiate<sensor_msgs::LaserScan>());
+        ros::WallDuration(FLAGS_sleep_ms / 1000).sleep();
       }
       if (msg.isType<sensor_msgs::MultiEchoLaserScan>()) {
         node.HandleMultiEchoLaserScanMessage(
             trajectory_id, sensor_id,
             msg.instantiate<sensor_msgs::MultiEchoLaserScan>());
+        ros::WallDuration(FLAGS_sleep_ms / 1000).sleep();
       }
       if (msg.isType<sensor_msgs::PointCloud2>()) {
         node.HandlePointCloud2Message(
             trajectory_id, sensor_id,
             msg.instantiate<sensor_msgs::PointCloud2>());
+        ros::WallDuration(FLAGS_sleep_ms / 1000).sleep();
       }
       if (msg.isType<sensor_msgs::Imu>()) {
         node.HandleImuMessage(trajectory_id, sensor_id,
@@ -346,8 +361,6 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
             msg.instantiate<cartographer_ros_msgs::LandmarkList>());
       }
     }
-    clock.clock = msg.getTime();
-    clock_publisher.publish(clock);
 
     if (is_last_message_in_bag) {
       node.FinishTrajectory(trajectory_id);
