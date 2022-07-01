@@ -119,7 +119,7 @@ RUN set -x && \
     rm -rf protobuf
     
 # Install ros_utils
-ARG ROS_UTILS_COMMIT=029d8719621a7c109194f38812cddfa85dc741b0
+ARG ROS_UTILS_COMMIT=66972c65a6819e3f03ea7b230bdb5f8342967961
 RUN set -x && \
     tar -zxf ros_utils.tar.gz && \
     cd ros_utils && \
