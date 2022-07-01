@@ -124,6 +124,9 @@ Node::Node(
     tracked_pose_publisher_ =
         node_handle_.advertise<::geometry_msgs::PoseStamped>(
             kTrackedPoseTopic, kLatestOnlyPublisherQueueSize);
+    tracked_local_transform_publisher_ =
+        node_handle_.advertise<::geometry_msgs::TransformStamped>(
+            kTrackedLocalTransformTopic, kLatestOnlyPublisherQueueSize);
   }
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
@@ -327,6 +330,13 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
         pose_msg.header.stamp = stamped_transform.header.stamp;
         pose_msg.pose = ToGeometryMsgPose(tracking_to_map);
         tracked_pose_publisher_.publish(pose_msg);
+
+        ::geometry_msgs::TransformStamped local_transform_msg;
+        local_transform_msg.header.frame_id = trajectory_data.trajectory_options.odom_frame;
+        local_transform_msg.header.stamp = stamped_transform.header.stamp;
+        local_transform_msg.child_frame_id = trajectory_data.trajectory_options.tracking_frame;
+        local_transform_msg.transform = ToGeometryMsgTransform(tracking_to_local);
+        tracked_local_transform_publisher_.publish(local_transform_msg);
       }
     }
   }
