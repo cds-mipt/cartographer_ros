@@ -53,7 +53,7 @@ DEFINE_string(urdf_filenames, "",
               "Comma-separated list of one or more URDF files that contain "
               "static links for the sensor configuration(s).");
 DEFINE_bool(use_bag_transforms, true,
-            "Whether to read, use and republish transforms from bags.");
+            "Whether to read and use transforms from bags.");
 DEFINE_bool(read_transforms_from_topics, true,
             "Read transforms from /tf and /tf_static.");
 DEFINE_string(load_state_filename, "",
@@ -81,7 +81,6 @@ namespace cartographer_ros {
 
 constexpr char kClockTopic[] = "/clock";
 constexpr char kTfStaticTopic[] = "/tf_static";
-constexpr char kTfTopic[] = "tf";
 constexpr double kClockPublishFrequencySec = 1. / 30.;
 constexpr int kSingleThreaded = 1;
 // We publish tf messages one second earlier than other messages. Under
@@ -154,10 +153,6 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
     node.LoadState(FLAGS_load_state_filename, FLAGS_load_frozen_state);
   }
 
-  ::ros::Publisher tf_publisher =
-      node.node_handle()->advertise<tf2_msgs::TFMessage>(
-          kTfTopic, kLatestOnlyPublisherQueueSize);
-
   ::tf2_ros::StaticTransformBroadcaster static_tf_broadcaster;
 
   ::ros::Publisher clock_publisher =
@@ -225,12 +220,10 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
         // When a message is retrieved by GetNextMessage() further below,
         // we will have already inserted further 'kDelay' seconds worth of
         // transforms into 'tf_buffer' via this lambda.
-        [&tf_publisher, &tf_buffer](const rosbag::MessageInstance& msg) {
+        [&tf_buffer](const rosbag::MessageInstance& msg) {
           if (msg.isType<tf2_msgs::TFMessage>()) {
             if (FLAGS_use_bag_transforms) {
               const auto tf_message = msg.instantiate<tf2_msgs::TFMessage>();
-              tf_publisher.publish(tf_message);
-
               for (const auto& transform : tf_message->transforms) {
                 try {
                   // We need to keep 'tf_buffer' small because it becomes very
