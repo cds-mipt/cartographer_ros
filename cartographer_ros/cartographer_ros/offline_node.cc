@@ -86,7 +86,7 @@ constexpr int kSingleThreaded = 1;
 // We publish tf messages one second earlier than other messages. Under
 // the assumption of higher frequency tf this should ensure that tf can
 // always interpolate.
-const ::ros::Duration kDelay = ::ros::Duration(1.0);
+const ::ros::Duration kDelay = ::ros::Duration(-1);
 
 void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   CHECK(!FLAGS_configuration_filenames.empty())
