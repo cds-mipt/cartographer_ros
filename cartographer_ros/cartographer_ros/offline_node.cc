@@ -33,19 +33,15 @@
 #include "ros/callback_queue.h"
 #include "rosgraph_msgs/Clock.h"
 #include "tf2_ros/static_transform_broadcaster.h"
+#include "tf2_ros/transform_listener.h"
 #include "urdf/model.h"
 
 DEFINE_bool(collect_metrics, false,
             "Activates the collection of runtime metrics. If activated, the "
             "metrics can be accessed via a ROS service.");
-DEFINE_string(configuration_directory, "",
-              "First directory in which configuration files are searched, "
-              "second is always the Cartographer installation to allow "
-              "including files from there.");
 DEFINE_string(
-    configuration_basenames, "",
-    "Comma-separated list of basenames, i.e. not containing any "
-    "directory prefix, of the configuration files for each trajectory. "
+    configuration_filenames, "",
+    "Comma-separated list of filenames with parameters for each trajectory. "
     "The first configuration file will be used for node options. "
     "If less configuration files are specified than trajectories, the "
     "first file will be used the remaining trajectories.");
@@ -57,7 +53,9 @@ DEFINE_string(urdf_filenames, "",
               "Comma-separated list of one or more URDF files that contain "
               "static links for the sensor configuration(s).");
 DEFINE_bool(use_bag_transforms, true,
-            "Whether to read, use and republish transforms from bags.");
+            "Whether to read and use transforms from bags.");
+DEFINE_bool(read_transforms_from_topics, true,
+            "Read transforms from /tf and /tf_static.");
 DEFINE_string(load_state_filename, "",
               "If non-empty, filename of a .pbstream file to load, containing "
               "a saved SLAM state.");
@@ -73,41 +71,42 @@ DEFINE_bool(keep_running, false,
             "have been processed.");
 DEFINE_double(skip_seconds, 0,
               "Optional amount of seconds to skip from the beginning "
-              "(i.e. when the earliest bag starts.). ");
+              "(i.e. when the earliest bag starts.).");
+DEFINE_double(sleep_ms_after_first_clock, 0,
+              "Sleep ms after first clock.");
+DEFINE_double(sleep_ms, 0,
+              "Sleep ms after each point cloud processed.");
 
 namespace cartographer_ros {
 
-constexpr char kClockTopic[] = "clock";
+constexpr char kClockTopic[] = "/clock";
 constexpr char kTfStaticTopic[] = "/tf_static";
-constexpr char kTfTopic[] = "tf";
 constexpr double kClockPublishFrequencySec = 1. / 30.;
 constexpr int kSingleThreaded = 1;
 // We publish tf messages one second earlier than other messages. Under
 // the assumption of higher frequency tf this should ensure that tf can
 // always interpolate.
-const ::ros::Duration kDelay = ::ros::Duration(1.0);
+const ::ros::Duration kDelay = ::ros::Duration(-1);
 
 void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
-  CHECK(!FLAGS_configuration_directory.empty())
-      << "-configuration_directory is missing.";
-  CHECK(!FLAGS_configuration_basenames.empty())
-      << "-configuration_basenames is missing.";
+  CHECK(!FLAGS_configuration_filenames.empty())
+      << "-configuration_filenames is missing.";
   CHECK(!(FLAGS_bag_filenames.empty() && FLAGS_load_state_filename.empty()))
       << "-bag_filenames and -load_state_filename cannot both be unspecified.";
   const std::vector<std::string> bag_filenames =
       absl::StrSplit(FLAGS_bag_filenames, ',', absl::SkipEmpty());
   cartographer_ros::NodeOptions node_options;
-  const std::vector<std::string> configuration_basenames =
-      absl::StrSplit(FLAGS_configuration_basenames, ',', absl::SkipEmpty());
+  const std::vector<std::string> configuration_filenames =
+      absl::StrSplit(FLAGS_configuration_filenames, ',', absl::SkipEmpty());
   std::vector<TrajectoryOptions> bag_trajectory_options(1);
   std::tie(node_options, bag_trajectory_options.at(0)) =
-      LoadOptions(FLAGS_configuration_directory, configuration_basenames.at(0));
+      LoadOptions(configuration_filenames.at(0));
 
   for (size_t bag_index = 1; bag_index < bag_filenames.size(); ++bag_index) {
     TrajectoryOptions current_trajectory_options;
-    if (bag_index < configuration_basenames.size()) {
+    if (bag_index < configuration_filenames.size()) {
       std::tie(std::ignore, current_trajectory_options) = LoadOptions(
-          FLAGS_configuration_directory, configuration_basenames.at(bag_index));
+          configuration_filenames.at(bag_index));
     } else {
       current_trajectory_options = bag_trajectory_options.at(0);
     }
@@ -140,17 +139,19 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
                            current_urdf_transforms.end());
   }
 
-  tf_buffer.setUsingDedicatedThread(true);
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_ptr;
+  if (FLAGS_read_transforms_from_topics) {
+    tf_listener_ptr.reset(new tf2_ros::TransformListener(tf_buffer));
+    ros::WallDuration(0.5).sleep();
+  } else {
+    tf_buffer.setUsingDedicatedThread(true);
+  }
 
   Node node(node_options, std::move(map_builder), &tf_buffer,
             FLAGS_collect_metrics);
   if (!FLAGS_load_state_filename.empty()) {
     node.LoadState(FLAGS_load_state_filename, FLAGS_load_frozen_state);
   }
-
-  ::ros::Publisher tf_publisher =
-      node.node_handle()->advertise<tf2_msgs::TFMessage>(
-          kTfTopic, kLatestOnlyPublisherQueueSize);
 
   ::tf2_ros::StaticTransformBroadcaster static_tf_broadcaster;
 
@@ -175,7 +176,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   std::vector<
       std::set<cartographer::mapping::TrajectoryBuilderInterface::SensorId>>
       bag_expected_sensor_ids;
-  if (configuration_basenames.size() == 1) {
+  if (configuration_filenames.size() == 1) {
     const auto current_bag_expected_sensor_ids =
         node.ComputeDefaultSensorIdsForMultipleBags(
             {bag_trajectory_options.front()});
@@ -219,12 +220,10 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
         // When a message is retrieved by GetNextMessage() further below,
         // we will have already inserted further 'kDelay' seconds worth of
         // transforms into 'tf_buffer' via this lambda.
-        [&tf_publisher, &tf_buffer](const rosbag::MessageInstance& msg) {
+        [&tf_buffer](const rosbag::MessageInstance& msg) {
           if (msg.isType<tf2_msgs::TFMessage>()) {
             if (FLAGS_use_bag_transforms) {
               const auto tf_message = msg.instantiate<tf2_msgs::TFMessage>();
-              tf_publisher.publish(tf_message);
-
               for (const auto& transform : tf_message->transforms) {
                 try {
                   // We need to keep 'tf_buffer' small because it becomes very
@@ -274,6 +273,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
       playable_bag_multiplexer.IsMessageAvailable()
           ? playable_bag_multiplexer.PeekMessageTime()
           : ros::Time();
+  bool first_message = true;
   while (playable_bag_multiplexer.IsMessageAvailable()) {
     if (!::ros::ok()) {
       return;
@@ -286,6 +286,13 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
 
     if (msg.getTime() < (begin_time + ros::Duration(FLAGS_skip_seconds))) {
       continue;
+    }
+
+    clock.clock = msg.getTime();
+    clock_publisher.publish(clock);
+    if (first_message) {
+      ros::WallDuration(FLAGS_sleep_ms_after_first_clock / 1000).sleep();
+      first_message = false;
     }
 
     int trajectory_id;
@@ -315,16 +322,19 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
       if (msg.isType<sensor_msgs::LaserScan>()) {
         node.HandleLaserScanMessage(trajectory_id, sensor_id,
                                     msg.instantiate<sensor_msgs::LaserScan>());
+        ros::WallDuration(FLAGS_sleep_ms / 1000).sleep();
       }
       if (msg.isType<sensor_msgs::MultiEchoLaserScan>()) {
         node.HandleMultiEchoLaserScanMessage(
             trajectory_id, sensor_id,
             msg.instantiate<sensor_msgs::MultiEchoLaserScan>());
+        ros::WallDuration(FLAGS_sleep_ms / 1000).sleep();
       }
       if (msg.isType<sensor_msgs::PointCloud2>()) {
         node.HandlePointCloud2Message(
             trajectory_id, sensor_id,
             msg.instantiate<sensor_msgs::PointCloud2>());
+        ros::WallDuration(FLAGS_sleep_ms / 1000).sleep();
       }
       if (msg.isType<sensor_msgs::Imu>()) {
         node.HandleImuMessage(trajectory_id, sensor_id,
@@ -344,8 +354,6 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
             msg.instantiate<cartographer_ros_msgs::LandmarkList>());
       }
     }
-    clock.clock = msg.getTime();
-    clock_publisher.publish(clock);
 
     if (is_last_message_in_bag) {
       node.FinishTrajectory(trajectory_id);

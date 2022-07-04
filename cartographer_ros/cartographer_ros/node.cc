@@ -48,6 +48,8 @@
 #include "tf2_eigen/tf2_eigen.h"
 #include "visualization_msgs/MarkerArray.h"
 
+#include "time_measurer/time_measurer.h"
+
 namespace cartographer_ros {
 
 namespace carto = ::cartographer;
@@ -65,7 +67,7 @@ template <typename MessageType>
                           const typename MessageType::ConstPtr&),
     const int trajectory_id, const std::string& topic,
     ::ros::NodeHandle* const node_handle, Node* const node,
-    time_measurer::TimeMeasurer* ros_time_measurer_pointer = nullptr) {
+    time_measurer::TimeMeasurer* ros_time_measurer_pointer) {
   CHECK(ros_time_measurer_pointer);
   return node_handle->subscribe<MessageType>(
       topic, kInfiniteSubscriberQueueSize,
@@ -122,6 +124,9 @@ Node::Node(
     tracked_pose_publisher_ =
         node_handle_.advertise<::geometry_msgs::PoseStamped>(
             kTrackedPoseTopic, kLatestOnlyPublisherQueueSize);
+    tracked_local_transform_publisher_ =
+        node_handle_.advertise<::geometry_msgs::TransformStamped>(
+            kTrackedLocalTransformTopic, kLatestOnlyPublisherQueueSize);
   }
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
@@ -325,6 +330,13 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
         pose_msg.header.stamp = stamped_transform.header.stamp;
         pose_msg.pose = ToGeometryMsgPose(tracking_to_map);
         tracked_pose_publisher_.publish(pose_msg);
+
+        ::geometry_msgs::TransformStamped local_transform_msg;
+        local_transform_msg.header.frame_id = trajectory_data.trajectory_options.odom_frame;
+        local_transform_msg.header.stamp = stamped_transform.header.stamp;
+        local_transform_msg.child_frame_id = trajectory_data.trajectory_options.tracking_frame;
+        local_transform_msg.transform = ToGeometryMsgTransform(tracking_to_local);
+        tracked_local_transform_publisher_.publish(local_transform_msg);
       }
     }
   }
@@ -423,7 +435,7 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::LaserScan>(
              &Node::HandleLaserScanMessage, trajectory_id, topic, &node_handle_,
-             this),
+             this, &ros_time_measurer),
          topic});
   }
   for (const std::string& topic : ComputeRepeatedTopicNames(
@@ -431,7 +443,7 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::MultiEchoLaserScan>(
              &Node::HandleMultiEchoLaserScanMessage, trajectory_id, topic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          topic});
   }
   for (const std::string& topic :
@@ -460,21 +472,21 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<nav_msgs::Odometry>(&Node::HandleOdometryMessage,
                                                   trajectory_id, kOdometryTopic,
-                                                  &node_handle_, this),
+                                                  &node_handle_, this, &ros_time_measurer),
          kOdometryTopic});
   }
   if (options.use_nav_sat) {
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<sensor_msgs::NavSatFix>(
              &Node::HandleNavSatFixMessage, trajectory_id, kNavSatFixTopic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          kNavSatFixTopic});
   }
   if (options.use_landmarks) {
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<cartographer_ros_msgs::LandmarkList>(
              &Node::HandleLandmarkMessage, trajectory_id, kLandmarkTopic,
-             &node_handle_, this),
+             &node_handle_, this, &ros_time_measurer),
          kLandmarkTopic});
   }
 }
@@ -566,8 +578,7 @@ bool Node::HandleStartTrajectory(
     ::cartographer_ros_msgs::StartTrajectory::Request& request,
     ::cartographer_ros_msgs::StartTrajectory::Response& response) {
   TrajectoryOptions trajectory_options;
-  std::tie(std::ignore, trajectory_options) = LoadOptions(
-      request.configuration_directory, request.configuration_basename);
+  std::tie(std::ignore, trajectory_options) = LoadOptions(request.configuration_filename);
 
   if (request.use_initial_pose) {
     const auto pose = ToRigid3d(request.initial_pose);

@@ -25,13 +25,8 @@
 DEFINE_bool(collect_metrics, false,
             "Activates the collection of runtime metrics. If activated, the "
             "metrics can be accessed via a ROS service.");
-DEFINE_string(configuration_directory, "",
-              "First directory in which configuration files are searched, "
-              "second is always the Cartographer installation to allow "
-              "including files from there.");
-DEFINE_string(configuration_basename, "",
-              "Basename, i.e. not containing any directory prefix, of the "
-              "configuration file.");
+DEFINE_string(configuration_filename, "",
+              "Configuration filename with parameters.");
 DEFINE_string(server_address, "localhost:50051",
               "gRPC server address to stream the sensor data to.");
 DEFINE_bool(
@@ -62,8 +57,7 @@ void Run() {
   tf2_ros::TransformListener tf(tf_buffer);
   NodeOptions node_options;
   TrajectoryOptions trajectory_options;
-  std::tie(node_options, trajectory_options) =
-      LoadOptions(FLAGS_configuration_directory, FLAGS_configuration_basename);
+  std::tie(node_options, trajectory_options) = LoadOptions(FLAGS_configuration_filename);
 
   auto map_builder = absl::make_unique<::cartographer::cloud::MapBuilderStub>(
       FLAGS_server_address, FLAGS_client_id);
