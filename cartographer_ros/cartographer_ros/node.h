@@ -190,6 +190,7 @@ class Node {
   ::ros::Publisher constraint_list_publisher_;
   ::ros::Publisher tracked_pose_publisher_;
   ::ros::Publisher tracked_local_odometry_publisher_;
+  ::ros::Publisher tracked_global_odometry_publisher_;
   // These ros::ServiceServers need to live for the lifetime of the node.
   std::vector<::ros::ServiceServer> service_servers_;
   ::ros::Publisher scan_matched_point_cloud_publisher_;

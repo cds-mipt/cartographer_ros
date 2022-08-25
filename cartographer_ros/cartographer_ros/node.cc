@@ -127,6 +127,9 @@ Node::Node(
     tracked_local_odometry_publisher_ =
         node_handle_.advertise<::nav_msgs::Odometry>(
             kTrackedLocalOdometryTopic, kLatestOnlyPublisherQueueSize);
+    tracked_global_odometry_publisher_ =
+        node_handle_.advertise<::nav_msgs::Odometry>(
+            kTrackedGlobalOdometryTopic, kLatestOnlyPublisherQueueSize);
   }
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
@@ -334,9 +337,18 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
         ::nav_msgs::Odometry local_odometry_msg;
         local_odometry_msg.header.frame_id = trajectory_data.trajectory_options.odom_frame;
         local_odometry_msg.header.stamp = stamped_transform.header.stamp;
-        local_odometry_msg.child_frame_id = trajectory_data.trajectory_options.tracking_frame;
-        local_odometry_msg.pose.pose = ToGeometryMsgPose(tracking_to_local);
+        local_odometry_msg.child_frame_id = trajectory_data.trajectory_options.published_frame;
+        local_odometry_msg.pose.pose = ToGeometryMsgPose(
+            tracking_to_local * (*trajectory_data.published_to_tracking));
         tracked_local_odometry_publisher_.publish(local_odometry_msg);
+
+        ::nav_msgs::Odometry global_odometry_msg;
+        global_odometry_msg.header.frame_id = node_options_.map_frame;
+        global_odometry_msg.header.stamp = stamped_transform.header.stamp;
+        global_odometry_msg.child_frame_id = trajectory_data.trajectory_options.published_frame;
+        global_odometry_msg.pose.pose = ToGeometryMsgPose(
+            tracking_to_map * (*trajectory_data.published_to_tracking));
+        tracked_global_odometry_publisher_.publish(global_odometry_msg);
       }
     }
   }
