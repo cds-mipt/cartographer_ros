@@ -43,6 +43,7 @@
 #include "geometry_msgs/PoseStamped.h"
 #include "glog/logging.h"
 #include "nav_msgs/Odometry.h"
+#include "nav_msgs/Path.h"
 #include "ros/serialization.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "tf2_eigen/tf2_eigen.h"
@@ -101,7 +102,8 @@ Node::Node(
     std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
     tf2_ros::Buffer* const tf_buffer, const bool collect_metrics)
     : node_options_(node_options),
-      map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer) {
+      map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer),
+      last_optimized_node_poses_time_(::ros::Time(0)) {
   absl::MutexLock lock(&mutex_);
   if (collect_metrics) {
     metrics_registry_ = absl::make_unique<metrics::FamilyFactory>();
@@ -131,6 +133,9 @@ Node::Node(
         node_handle_.advertise<::nav_msgs::Odometry>(
             kTrackedGlobalOdometryTopic, kLatestOnlyPublisherQueueSize);
   }
+  optimized_node_poses_publisher_ =
+      node_handle_.advertise<::nav_msgs::Path>(
+          kOptimizedNodePosesTopic, kLatestOnlyPublisherQueueSize);
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
   service_servers_.push_back(node_handle_.advertiseService(
@@ -233,6 +238,11 @@ void Node::AddSensorSamplers(const int trajectory_id,
 
 void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
   absl::MutexLock lock(&mutex_);
+  if (last_optimized_node_poses_time_ != map_builder_bridge_.GetOptimizedNodePosesTime()) {
+    const auto& optimized_node_poses = map_builder_bridge_.GetOptimizedNodePoses();
+    optimized_node_poses_publisher_.publish(optimized_node_poses);
+    last_optimized_node_poses_time_ = map_builder_bridge_.GetOptimizedNodePosesTime();
+  }
   for (const auto& entry : map_builder_bridge_.GetLocalTrajectoryData()) {
     const auto& trajectory_data = entry.second;
 

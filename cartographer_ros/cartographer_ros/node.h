@@ -194,6 +194,7 @@ class Node {
   // These ros::ServiceServers need to live for the lifetime of the node.
   std::vector<::ros::ServiceServer> service_servers_;
   ::ros::Publisher scan_matched_point_cloud_publisher_;
+  ::ros::Publisher optimized_node_poses_publisher_;
 
   struct TrajectorySensorSamplers {
     TrajectorySensorSamplers(const double rangefinder_sampling_ratio,
@@ -231,6 +232,8 @@ class Node {
   // simulation time is standing still. This prevents overflowing the transform
   // listener buffer by publishing the same transforms over and over again.
   ::ros::Timer publish_local_trajectory_data_timer_;
+
+  ::ros::Time last_optimized_node_poses_time_;
 };
 
 }  // namespace cartographer_ros

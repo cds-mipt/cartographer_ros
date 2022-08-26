@@ -37,6 +37,7 @@
 #include "cartographer_ros_msgs/TrajectoryQuery.h"
 #include "geometry_msgs/TransformStamped.h"
 #include "nav_msgs/OccupancyGrid.h"
+#include "nav_msgs/Path.h"
 
 // Abseil unfortunately pulls in winnt.h, which #defines DELETE.
 // Clean up to unbreak visualization_msgs::Marker::DELETE.
@@ -99,6 +100,9 @@ class MapBuilderBridge {
   visualization_msgs::MarkerArray GetTrajectoryNodeList();
   visualization_msgs::MarkerArray GetLandmarkPosesList();
   visualization_msgs::MarkerArray GetConstraintList();
+  nav_msgs::Path GetGlobalNodePoses(bool only_active_and_connected_trajectories);
+  ::ros::Time GetOptimizedNodePosesTime();
+  nav_msgs::Path GetOptimizedNodePoses();
 
   SensorBridge* sensor_bridge(int trajectory_id);
 
@@ -109,11 +113,15 @@ class MapBuilderBridge {
                          ::cartographer::sensor::RangeData range_data_in_local)
       LOCKS_EXCLUDED(mutex_);
 
+  void OnGlobalSlamOptimization() LOCKS_EXCLUDED(mutex_);
+
   absl::Mutex mutex_;
   const NodeOptions node_options_;
   std::unordered_map<int,
                      std::shared_ptr<const LocalTrajectoryData::LocalSlamData>>
       local_slam_data_ GUARDED_BY(mutex_);
+  nav_msgs::Path optimized_node_poses_ GUARDED_BY(mutex_);
+  std::map<int, std::unique_ptr<::cartographer::transform::Rigid3d>> published_to_tracking_cache_;
   std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder_;
   tf2_ros::Buffer* const tf_buffer_;
 

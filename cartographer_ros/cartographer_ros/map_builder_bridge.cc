@@ -25,6 +25,9 @@
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
 
+#include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/Pose.h"
+
 namespace cartographer_ros {
 namespace {
 
@@ -102,7 +105,14 @@ MapBuilderBridge::MapBuilderBridge(
     tf2_ros::Buffer* const tf_buffer)
     : node_options_(node_options),
       map_builder_(std::move(map_builder)),
-      tf_buffer_(tf_buffer) {}
+      tf_buffer_(tf_buffer) {
+  map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
+      [this](const std::map<int, cartographer::mapping::SubmapId>&,
+             const std::map<int, cartographer::mapping::NodeId>&) {
+        OnGlobalSlamOptimization();
+      });
+  optimized_node_poses_.header.stamp = ::ros::Time(0);
+}
 
 void MapBuilderBridge::LoadState(const std::string& state_filename,
                                  bool load_frozen_state) {
@@ -519,6 +529,90 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
   return constraint_list;
 }
 
+nav_msgs::Path MapBuilderBridge::GetGlobalNodePoses(bool only_active_and_connected_trajectories) {
+  std::set<int> trajectories_to_use;
+  if (only_active_and_connected_trajectories) {
+    const auto& trajectory_states = map_builder_->pose_graph()->GetTrajectoryStates();
+    for (const auto& trajectory_id_state : trajectory_states) {
+      if (trajectory_id_state.second == ::cartographer::mapping::PoseGraphInterface::TrajectoryState::ACTIVE) {
+        trajectories_to_use.insert(trajectory_id_state.first);
+      }
+    }
+    for (const auto& trajectory_id_state : trajectory_states) {
+      const int trajectory_id = trajectory_id_state.first;
+      for (int trajectory_in_use : trajectories_to_use) {
+        if (map_builder_->pose_graph()->TrajectoriesTransitivelyConnected(trajectory_id, trajectory_in_use)) {
+          trajectories_to_use.insert(trajectory_id);
+          break;
+        }
+      }
+    }
+  } else {
+    const auto& trajectory_states = map_builder_->pose_graph()->GetTrajectoryStates();
+    for (const auto& trajectory_id_state : trajectory_states) {
+      trajectories_to_use.insert(trajectory_id_state.first);
+    }
+  }
+
+  int seq = 0;
+  nav_msgs::Path global_node_poses;
+  global_node_poses.header.stamp = ::ros::Time(0);
+  global_node_poses.header.frame_id = node_options_.map_frame;
+  const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodePoses();
+  for (const auto& trajectory_id : trajectories_to_use) {
+    if (sensor_bridges_.count(trajectory_id) == 0 &&
+        published_to_tracking_cache_.count(trajectory_id) == 0) {
+      continue;
+    }
+    const Rigid3d *published_to_tracking;
+    if (published_to_tracking_cache_.count(trajectory_id) != 0) {
+      published_to_tracking = published_to_tracking_cache_.at(trajectory_id).get();
+    } else {
+      const SensorBridge& sensor_bridge = *(sensor_bridges_.at(trajectory_id));
+       std::unique_ptr<Rigid3d> published_to_tracking_ptr =
+          sensor_bridge.tf_bridge().LookupToTracking(
+              FromRos(::ros::Time(0)),
+              trajectory_options_[trajectory_id].published_frame);
+      if (!published_to_tracking_ptr) {
+        continue;
+      }
+      published_to_tracking_cache_[trajectory_id] = std::move(published_to_tracking_ptr);
+      published_to_tracking = published_to_tracking_cache_.at(trajectory_id).get();
+    }
+    for (const auto& node_id_pose : node_poses.trajectory(trajectory_id)) {
+      if (node_id_pose.data.constant_pose_data.has_value()) {
+        ::cartographer::common::Time time = node_id_pose.data.constant_pose_data->time;
+        Rigid3d pose = node_id_pose.data.global_pose;
+        geometry_msgs::PoseStamped ros_pose;
+        ros_pose.header.seq = seq;
+        ros_pose.header.stamp = ToRos(time);
+        ros_pose.header.frame_id = trajectory_options_[trajectory_id].published_frame;
+        ros_pose.pose = ToGeometryMsgPose(pose * (*published_to_tracking));
+        global_node_poses.poses.push_back(ros_pose);
+        if (ros_pose.header.stamp > global_node_poses.header.stamp) {
+          global_node_poses.header.stamp = ros_pose.header.stamp;
+        }
+        seq++;
+      }
+    }
+  }
+  return global_node_poses;
+}
+
+::ros::Time MapBuilderBridge::GetOptimizedNodePosesTime() {
+  absl::MutexLock lock(&mutex_);
+  return optimized_node_poses_.header.stamp;
+}
+
+nav_msgs::Path MapBuilderBridge::GetOptimizedNodePoses() {
+  nav_msgs::Path optimized_node_poses;
+  {
+    absl::MutexLock lock(&mutex_);
+    optimized_node_poses = optimized_node_poses_;
+  }
+  return optimized_node_poses;
+}
+
 SensorBridge* MapBuilderBridge::sensor_bridge(const int trajectory_id) {
   return sensor_bridges_.at(trajectory_id).get();
 }
@@ -533,6 +627,12 @@ void MapBuilderBridge::OnLocalSlamResult(
                                              std::move(range_data_in_local)});
   absl::MutexLock lock(&mutex_);
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
+}
+
+void MapBuilderBridge::OnGlobalSlamOptimization() {
+  nav_msgs::Path optimized_node_poses = GetGlobalNodePoses(true);
+  absl::MutexLock lock(&mutex_);
+  optimized_node_poses_ = std::move(optimized_node_poses);
 }
 
 }  // namespace cartographer_ros
