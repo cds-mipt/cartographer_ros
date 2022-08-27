@@ -596,6 +596,15 @@ nav_msgs::Path MapBuilderBridge::GetGlobalNodePoses(bool only_active_and_connect
       }
     }
   }
+
+  if (global_node_poses.header.stamp == ::ros::Time(0)) {
+    if (node_poses.size() != 0) {
+      const auto last_node_pose_it = std::prev(node_poses.end());
+      if (last_node_pose_it->data.constant_pose_data.has_value()) {
+        global_node_poses.header.stamp = ToRos(last_node_pose_it->data.constant_pose_data->time);
+      }
+    }
+  }
   return global_node_poses;
 }
 
