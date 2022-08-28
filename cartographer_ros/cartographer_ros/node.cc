@@ -103,7 +103,7 @@ Node::Node(
     tf2_ros::Buffer* const tf_buffer, const bool collect_metrics)
     : node_options_(node_options),
       map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer),
-      last_optimized_node_poses_time_(::ros::Time(0)) {
+      last_optimized_node_poses_counter_(0) {
   absl::MutexLock lock(&mutex_);
   if (collect_metrics) {
     metrics_registry_ = absl::make_unique<metrics::FamilyFactory>();
@@ -238,11 +238,6 @@ void Node::AddSensorSamplers(const int trajectory_id,
 
 void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
   absl::MutexLock lock(&mutex_);
-  if (last_optimized_node_poses_time_ != map_builder_bridge_.GetOptimizedNodePosesTime()) {
-    const auto& optimized_node_poses = map_builder_bridge_.GetOptimizedNodePoses();
-    optimized_node_poses_publisher_.publish(optimized_node_poses);
-    last_optimized_node_poses_time_ = map_builder_bridge_.GetOptimizedNodePosesTime();
-  }
   for (const auto& entry : map_builder_bridge_.GetLocalTrajectoryData()) {
     const auto& trajectory_data = entry.second;
 
@@ -361,6 +356,20 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
         tracked_global_odometry_publisher_.publish(global_odometry_msg);
       }
     }
+  }
+
+  nav_msgs::PathPtr optimized_node_poses =
+      map_builder_bridge_.GetOptimizedNodePosesIfChanged(&last_optimized_node_poses_counter_);
+  if (optimized_node_poses) {
+    if (optimized_node_poses->header.stamp == ::ros::Time(0) &&
+        last_published_tf_stamps_.size() > 0) {
+      for (const auto& entry : last_published_tf_stamps_) {
+        if (optimized_node_poses->header.stamp < entry.second) {
+          optimized_node_poses->header.stamp = entry.second;
+        }
+      }
+    }
+    optimized_node_poses_publisher_.publish(*optimized_node_poses);
   }
 }
 

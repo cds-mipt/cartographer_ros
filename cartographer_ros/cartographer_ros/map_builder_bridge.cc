@@ -104,6 +104,7 @@ MapBuilderBridge::MapBuilderBridge(
     std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
     tf2_ros::Buffer* const tf_buffer)
     : node_options_(node_options),
+      optimized_node_poses_counter_(0),
       map_builder_(std::move(map_builder)),
       tf_buffer_(tf_buffer) {
   map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
@@ -596,21 +597,7 @@ nav_msgs::Path MapBuilderBridge::GetGlobalNodePoses(bool only_active_and_connect
       }
     }
   }
-
-  if (global_node_poses.header.stamp == ::ros::Time(0)) {
-    if (node_poses.size() != 0) {
-      const auto last_node_pose_it = std::prev(node_poses.end());
-      if (last_node_pose_it->data.constant_pose_data.has_value()) {
-        global_node_poses.header.stamp = ToRos(last_node_pose_it->data.constant_pose_data->time);
-      }
-    }
-  }
   return global_node_poses;
-}
-
-::ros::Time MapBuilderBridge::GetOptimizedNodePosesTime() {
-  absl::MutexLock lock(&mutex_);
-  return optimized_node_poses_.header.stamp;
 }
 
 nav_msgs::Path MapBuilderBridge::GetOptimizedNodePoses() {
@@ -618,6 +605,24 @@ nav_msgs::Path MapBuilderBridge::GetOptimizedNodePoses() {
   {
     absl::MutexLock lock(&mutex_);
     optimized_node_poses = optimized_node_poses_;
+  }
+  return optimized_node_poses;
+}
+
+int MapBuilderBridge::GetOptimizedNodePosesCounter() {
+  absl::MutexLock lock(&mutex_);
+  return optimized_node_poses_counter_;
+}
+
+nav_msgs::PathPtr MapBuilderBridge::GetOptimizedNodePosesIfChanged(int* optimized_node_poses_counter) {
+  nav_msgs::PathPtr optimized_node_poses;
+  {
+    absl::MutexLock lock(&mutex_);
+    if (*optimized_node_poses_counter == optimized_node_poses_counter_) {
+      return optimized_node_poses;
+    }
+    optimized_node_poses.reset(new nav_msgs::Path(optimized_node_poses_));
+    *optimized_node_poses_counter = optimized_node_poses_counter_;
   }
   return optimized_node_poses;
 }
@@ -642,6 +647,7 @@ void MapBuilderBridge::OnGlobalSlamOptimization() {
   nav_msgs::Path optimized_node_poses = GetGlobalNodePoses(true);
   absl::MutexLock lock(&mutex_);
   optimized_node_poses_ = std::move(optimized_node_poses);
+  optimized_node_poses_counter_++;
 }
 
 }  // namespace cartographer_ros

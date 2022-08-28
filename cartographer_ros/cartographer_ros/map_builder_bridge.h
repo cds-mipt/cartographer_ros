@@ -101,8 +101,9 @@ class MapBuilderBridge {
   visualization_msgs::MarkerArray GetLandmarkPosesList();
   visualization_msgs::MarkerArray GetConstraintList();
   nav_msgs::Path GetGlobalNodePoses(bool only_active_and_connected_trajectories);
-  ::ros::Time GetOptimizedNodePosesTime();
   nav_msgs::Path GetOptimizedNodePoses();
+  int GetOptimizedNodePosesCounter();
+  nav_msgs::PathPtr GetOptimizedNodePosesIfChanged(int* optimized_node_poses_counter);
 
   SensorBridge* sensor_bridge(int trajectory_id);
 
@@ -121,6 +122,7 @@ class MapBuilderBridge {
                      std::shared_ptr<const LocalTrajectoryData::LocalSlamData>>
       local_slam_data_ GUARDED_BY(mutex_);
   nav_msgs::Path optimized_node_poses_ GUARDED_BY(mutex_);
+  int optimized_node_poses_counter_ GUARDED_BY(mutex_);
   std::map<int, std::unique_ptr<::cartographer::transform::Rigid3d>> published_to_tracking_cache_;
   std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder_;
   tf2_ros::Buffer* const tf_buffer_;
