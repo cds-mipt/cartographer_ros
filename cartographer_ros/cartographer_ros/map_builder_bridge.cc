@@ -126,7 +126,13 @@ void MapBuilderBridge::LoadState(const std::string& state_filename,
          ".pbstream file.";
   LOG(INFO) << "Loading saved state '" << state_filename << "'...";
   cartographer::io::ProtoStreamReader stream(state_filename);
-  map_builder_->LoadState(&stream, load_frozen_state);
+  std::vector<cartographer::mapping::proto::RosTrajectoryOptions> ros_trajectory_options;
+  std::map<int, int> trajectory_remapping =
+      map_builder_->LoadState(&stream, load_frozen_state, &ros_trajectory_options);
+  for (const auto& entry : ros_trajectory_options) {
+    int trajectory_id = trajectory_remapping.at(entry.trajectory_id());
+    trajectory_options_[trajectory_id].tracking_frame = entry.tracking_frame();
+  }
 }
 
 int MapBuilderBridge::AddTrajectory(
@@ -172,10 +178,24 @@ void MapBuilderBridge::RunFinalOptimization() {
   map_builder_->pose_graph()->RunFinalOptimization();
 }
 
+std::vector<cartographer::mapping::proto::RosTrajectoryOptions>
+    MapBuilderBridge::CreateRosTrajectoryOptions() {
+  std::vector<cartographer::mapping::proto::RosTrajectoryOptions> ros_trajectory_options;
+  for (const auto& entry : trajectory_options_) {
+    cartographer::mapping::proto::RosTrajectoryOptions proto;
+    proto.set_trajectory_id(entry.first);
+    proto.set_tracking_frame(entry.second.tracking_frame);
+    ros_trajectory_options.push_back(proto);
+  }
+  return ros_trajectory_options;
+}
+
 bool MapBuilderBridge::SerializeState(const std::string& filename,
                                       const bool include_unfinished_submaps) {
+  std::vector<cartographer::mapping::proto::RosTrajectoryOptions> ros_trajectory_options =
+      CreateRosTrajectoryOptions();
   return map_builder_->SerializeStateToFile(include_unfinished_submaps,
-                                            filename);
+                                            filename, &ros_trajectory_options);
 }
 
 void MapBuilderBridge::HandleSubmapQuery(
