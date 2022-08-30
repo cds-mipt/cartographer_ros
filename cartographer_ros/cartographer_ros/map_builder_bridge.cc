@@ -581,25 +581,6 @@ nav_msgs::Path MapBuilderBridge::GetGlobalNodePoses(bool only_active_and_connect
   global_node_poses.header.frame_id = node_options_.map_frame;
   const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodePoses();
   for (const auto& trajectory_id : trajectories_to_use) {
-    if (sensor_bridges_.count(trajectory_id) == 0 &&
-        published_to_tracking_cache_.count(trajectory_id) == 0) {
-      continue;
-    }
-    const Rigid3d *published_to_tracking;
-    if (published_to_tracking_cache_.count(trajectory_id) != 0) {
-      published_to_tracking = published_to_tracking_cache_.at(trajectory_id).get();
-    } else {
-      const SensorBridge& sensor_bridge = *(sensor_bridges_.at(trajectory_id));
-       std::unique_ptr<Rigid3d> published_to_tracking_ptr =
-          sensor_bridge.tf_bridge().LookupToTracking(
-              FromRos(::ros::Time(0)),
-              trajectory_options_[trajectory_id].published_frame);
-      if (!published_to_tracking_ptr) {
-        continue;
-      }
-      published_to_tracking_cache_[trajectory_id] = std::move(published_to_tracking_ptr);
-      published_to_tracking = published_to_tracking_cache_.at(trajectory_id).get();
-    }
     for (const auto& node_id_pose : node_poses.trajectory(trajectory_id)) {
       if (node_id_pose.data.constant_pose_data.has_value()) {
         ::cartographer::common::Time time = node_id_pose.data.constant_pose_data->time;
@@ -607,8 +588,8 @@ nav_msgs::Path MapBuilderBridge::GetGlobalNodePoses(bool only_active_and_connect
         geometry_msgs::PoseStamped ros_pose;
         ros_pose.header.seq = seq;
         ros_pose.header.stamp = ToRos(time);
-        ros_pose.header.frame_id = trajectory_options_[trajectory_id].published_frame;
-        ros_pose.pose = ToGeometryMsgPose(pose * (*published_to_tracking));
+        ros_pose.header.frame_id = trajectory_options_.at(trajectory_id).tracking_frame;
+        ros_pose.pose = ToGeometryMsgPose(pose);
         global_node_poses.poses.push_back(ros_pose);
         if (ros_pose.header.stamp > global_node_poses.header.stamp) {
           global_node_poses.header.stamp = ros_pose.header.stamp;
